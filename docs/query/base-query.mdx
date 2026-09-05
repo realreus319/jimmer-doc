@@ -101,7 +101,7 @@ val books =
 
 For this example:
 
--   Unlike queries created by `createQuery`, base queries created by `createBaseQuery` are not executed directly. Their purpose is only to build derived tables for subsequent use by real queries created with `createQuery` *(as base tables for `from` or `join`)*.
+-   Unlike queries created by `createQuery`, base queries created by `createBaseQuery` are not executed directly. They build typed sources for queries created with `createQuery` *(as base tables for `from` or `join`)* or for `createInsert` and `createUpsert` mutations.
 
 -   The internal base-query returns two columns *(the first column is a table object, the second column is a simple expression)*. The external query uses `get_1()`/`_1` and `get_2()`/`_2` to use them.
 
@@ -1869,3 +1869,21 @@ Actually, in the SQL specification, `union` can also be used for `Recursive CTE`
 
 Therefore, Jimmer's Recursive CTE stipulates that only `union all` can be used, not `union`.
 :::
+
+## Rootless Queries and Mutation Sources
+
+`createBaseQuery()` can also be called without a root entity or association
+table. Such a query selects literals, parameters, native expressions, or scalar
+subqueries. In Kotlin, use `createBaseQuery { select(...) }` without an entity
+class. A [typed-tuple mapper](./typed-tuple) gives the result named properties;
+the [insert-from-select example](../mutation/insert-from-select) shows a complete
+Java/Kotlin declaration and rootless source.
+
+The result can be exposed with `asBaseTable()` or `asCteBaseTable()`, combined
+with other compatible queries through `union`/`unionAll`, and reused by
+`createQuery(source)` or `createBaseQuery(source)`.
+
+Base tables are also accepted by `createInsert` and `createUpsert`. The source
+may use joins, filters, aggregates, unions, or recursive CTEs. The mutation's
+single-physical-table restriction applies to its target, not to the source.
+See [Insert and Upsert from Select](../mutation/insert-from-select).

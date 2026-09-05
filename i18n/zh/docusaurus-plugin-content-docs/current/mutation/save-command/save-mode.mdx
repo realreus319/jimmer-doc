@@ -1520,3 +1520,11 @@ Jimmer提供了多样的保存方法，其中，很多方法都是等价的
 如果试图用`saveEntities`方法保存多个格式不同的对象，会发生什么呢？
 
 Jimmer会先对这些对象按照格式分组，再对每一组实施上述所有功能。
+
+## 控制upsert的更新
+
+保存模式决定插入/更新行为。要限制冲突时修改的属性，使用[upsert mask](./upsert-mask)。
+要根据数据库值和输入值跳过更新，使用[setUpdateWhere](./update-where)。
+
+`forbidUpdate()`不选择实体属性更新赋值，但不等于`INSERT_IF_ABSENT`，因为保存语义仍可能
+要求自赋值。应检查[isAccepted](./returning#acceptance)，而不是从影响行数推断接受状态。

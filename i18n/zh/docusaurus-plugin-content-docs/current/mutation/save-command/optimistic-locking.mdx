@@ -6,6 +6,9 @@ title: 乐观锁
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
+本页介绍默认的`VersionMode.OPTIMISTIC_LOCK`。显式版本赋值请参阅[版本模式](./version-mode)。
+业务条件不满足时，如果需要跳过更新而不抛出乐观锁异常，请使用[更新条件](./update-where)。
+
 ## 讨论前提
 
 -   一旦实体对象具备乐观锁，Jimmer就会放弃数据库本身的upsert能力，通过select查询判断后续操作应该是`insert`还是`update`,

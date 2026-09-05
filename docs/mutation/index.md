@@ -14,3 +14,9 @@ There are two groundbreaking capabilities:
 -   [Triggers](./trigger) 
 
     Awareness of data changes whether via Jimmer's own capabilities or integrating with existing CDC solutions. This enables automatic [Caching](../cache) invalidation.
+
+## Query-Based Mutations
+
+[Insert and Upsert from Select](./insert-from-select) maps typed base-query
+results to a target table, with explicit conflict keys, separate insert/update
+assignments, update conditions, and returning.

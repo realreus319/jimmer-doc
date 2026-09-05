@@ -47,6 +47,48 @@ val modifiedBook = sqlClient
 批量保存指令也提供相同的重载。也可以用生成的输出DTO类型代替fetcher，此时结果通过
 `modifiedView`提供转换后的DTO。
 
+## 是否被接受 {#acceptance}
+
+结果项的`isAccepted`表示该对象自身的插入或更新分支是否被接受。在把返回实体视为一次成功写入
+之前，应先检查这个标记：
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+SimpleSaveResult<Book> result = sqlClient.saveCommand(book).execute();
+boolean accepted = result.isAccepted();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+val result = sqlClient.save(book)
+val accepted = result.isAccepted
+```
+
+</TabItem>
+</Tabs>
+
+| 结果 | `isAccepted` |
+| --- | --- |
+| 插入新行 | `true` |
+| 被接受的更新，包括自赋值 | `true` |
+| `INSERT_IF_ABSENT`跳过已有行 | `false` |
+| `setUpdateWhere`拒绝更新 | `false` |
+| 单表继承的子类型鉴别器不兼容，更新被拒绝 | `false` |
+
+它与对象是否变化以及数据库影响行数不同。驱动可能为被接受的操作报告零影响行数，应使用
+接受标记，而不是从影响行数推断业务决定。
+
+批量结果项以及Java/Kotlin的view结果都保留相同的标记。接受状态针对被保存对象本身，不是整个
+对象图中所有关联操作的汇总。例如，`APPEND_IF_ABSENT`找到已有目标时，不会再次插入它，
+但仍然可以用解析出的id创建父对象的关联。主对象被更新条件拒绝时，则不会继续处理其后置关联。
+
+对于基于查询的修改，[insert/upsert returning](../insert-from-select)只包含实际进入被接受修改
+分支的数据行。
+
 ## 结果如何被物化
 
 Jimmer通过三个步骤构造结果：

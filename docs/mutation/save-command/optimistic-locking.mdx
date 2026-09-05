@@ -6,6 +6,11 @@ title: Optimistic Locking
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
+This page describes the default `VersionMode.OPTIMISTIC_LOCK`. For explicit
+version assignment, see [Version Mode](./version-mode). To skip an update when
+a business condition fails, without an optimistic-lock exception, use
+[Update Conditions](./update-where).
+
 ## Discussion Prerequisites
 
 -   Once an entity object has optimistic locking, Jimmer will give up the database's native upsert capability. It will use select queries to determine whether the subsequent operation should be `insert` or `update`, and inform users that the query reason is `QueryReason.OPTIMISTIC_LOCK`.

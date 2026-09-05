@@ -24,3 +24,13 @@ title: 保存指令
 -   Kotlin: [jimmer-examples/kotlin/save-command-kt](https://github.com/babyfish-ct/jimmer-examples/tree/main/kotlin/save-command-kt)
 
 用IDE随意打开其中一个，运行单元测试即可。
+
+## 控制更新分支
+
+-   [Upsert Mask](./upsert-mask)：为插入和更新选择不同的属性。
+-   [赋值表达式](./assignment)：根据数据库值和输入值计算新值。
+-   [更新条件](./update-where)：拒绝更新而不抛出乐观锁异常。
+-   [版本模式](./version-mode)：把版本作为乐观锁或普通赋值。
+-   [保存结果获取](./returning)：获取数据库实际值，并检查修改是否被接受。
+
+输入是查询结果而不是对象图时，使用[从查询插入和合并数据](../insert-from-select)。

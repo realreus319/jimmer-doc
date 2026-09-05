@@ -1535,3 +1535,14 @@ These examples flexibly adjust the format of the objects being saved to demonstr
 What happens if you try to use the `saveEntities` method to save multiple objects with different formats?
 
 Jimmer will first group these objects by format, then apply all the above functionalities to each group.
+
+## Control an Upsert Update
+
+Save mode selects the insert/update behavior. To limit the properties changed
+on a conflict, use an [upsert mask](./upsert-mask). To skip an update based on
+stored and incoming values, use [setUpdateWhere](./update-where).
+
+`forbidUpdate()` selects no entity-property update assignments; it does not
+mean `INSERT_IF_ABSENT`, because a self-assignment can still be required by
+save semantics. Check [isAccepted](./returning#acceptance) instead of deriving
+acceptance from the affected-row count.

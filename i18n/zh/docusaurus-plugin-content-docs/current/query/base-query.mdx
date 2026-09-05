@@ -102,7 +102,7 @@ val books =
 对于这个例子
 
 -   和`createQuery`创建真实查询不同，`createBaseQuery`创建的base-query不会被直接执行。
-    其目的仅仅在于构建derived table，供后续`createQuery`创建真正的查询使用 *(作为from或join的基表使用)*
+    它构建类型安全的source，供后续`createQuery`查询使用 *(作为from或join的基表使用)*，也可供`createInsert`和`createUpsert`修改数据使用。
 
 -   内部的base-query返回了两列 *(第一列是表对象，第二列是简单表达式)*。外部查询使用`get_1()`/`_1`和`get_2()`/`_2`来使用他们
 
@@ -1871,3 +1871,17 @@ Tuple2(_1={"id":16,"name":"Suit"}, _2=5)
 
 因此，Jimmer的Recursive CTE规定只能使用`union all`，不能使用`union`。
 :::
+
+## 无根表查询和修改操作的source
+
+`createBaseQuery()`也可以不指定根实体或关联表，直接选择字面量、参数、原生表达式或标量
+子查询。Kotlin使用不带实体类型的`createBaseQuery { select(...) }`。
+[类型化元组mapper](./typed-tuple)可以为结果提供具名属性；[从查询插入的示例](../mutation/insert-from-select)
+包含完整的Java/Kotlin声明以及无根表source。
+
+结果可以通过`asBaseTable()`或`asCteBaseTable()`暴露，与其他兼容查询通过`union`/`unionAll`
+组合，并被`createQuery(source)`或`createBaseQuery(source)`复用。
+
+`createInsert`和`createUpsert`也接受base-table。Source可以使用连接、过滤、聚合、联合查询
+或递归CTE。修改操作的单物理表限制针对目标，不针对source。
+详情参阅[从查询插入和合并数据](../mutation/insert-from-select)。

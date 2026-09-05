@@ -1,0 +1,112 @@
+---
+sidebar_position: 9.1
+title: Version Mode
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+A save command can treat the root entity's `@Version` either as an optimistic
+lock or as an ordinary assigned value. The default remains
+`VersionMode.OPTIMISTIC_LOCK`.
+
+| Mode | Loaded version on update | Automatic increment |
+| --- | --- | --- |
+| `OPTIMISTIC_LOCK` | Adds the implicit version check | Yes, after a successful versioned update |
+| `ASSIGNMENT` | Controlled by object shape, mask, and assignments | No |
+
+Use the default for concurrent editing with stale-version detection. Use
+`ASSIGNMENT` when importing externally versioned data or implementing an explicit
+version policy. A loaded version is then neither an implicit lock predicate nor
+an instruction to increment.
+
+## Assign an Incoming Version
+
+Assume `store` contains a version from an external source and the values required
+for insertion. Only accept a newer incoming version for an existing row:
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+sqlClient
+    .saveCommand(store)
+    .setVersionMode(VersionMode.ASSIGNMENT)
+    .setUpdateWhere(
+        BookStoreTable.class,
+        (table, values) -> values.newNumber(BookStoreProps.VERSION).gt(table.version())
+    )
+    .execute();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+sqlClient.save(store) {
+    setVersionMode(VersionMode.ASSIGNMENT)
+    setUpdateWhere(BookStore::class) {
+        newNonNull(BookStore::version) gt table.version
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+An accepted update writes the supplied version unchanged. An older or equal
+version is rejected normally; inspect [result acceptance](./returning#acceptance).
+A new row is inserted independently of the update condition.
+
+An unloaded version still receives the framework's initial value on insertion.
+In assignment mode, excluding a loaded version from the update mask preserves
+the existing version on a conflict.
+
+## Compute the Next Version
+
+In assignment mode, `@Version` is also a valid target of a
+[save assignment expression](./assignment):
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+sqlClient
+    .saveCommand(store)
+    .setVersionMode(VersionMode.ASSIGNMENT)
+    .set(
+        BookStoreTable.class,
+        BookStoreProps.VERSION,
+        (target, values) -> target.version().plus(1)
+    )
+    .execute();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+sqlClient.save(store) {
+    setVersionMode(VersionMode.ASSIGNMENT)
+    set(BookStore::version) {
+        target.version + 1
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+The ordinary save-assignment rules still apply: the target must be loaded and
+selected for update by the mask. If compare-and-increase semantics are required,
+add an explicit `setUpdateWhere` or `setOptimisticLock` predicate comparing the
+stored version with the incoming version.
+
+:::caution
+`setVersionMode` applies only to the root entity. It does not propagate to
+associated entities in a graph save. Switching to `ASSIGNMENT` removes the
+implicit version protection; it does not silently replace it with another check.
+:::
+
+[Insert/upsert from select](../insert-from-select) uses assignment semantics for
+versions, so source version values do not accidentally enable optimistic locking.

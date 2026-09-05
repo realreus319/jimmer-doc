@@ -1,0 +1,102 @@
+---
+sidebar_position: 7.1
+title: Update Conditions
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+Use `setUpdateWhere` when an existing row should only be updated if a business
+condition is satisfied. A rejected update is a normal result, not an optimistic-lock
+exception. For example, accept a price only if it is higher than the stored price.
+
+## Basic Usage
+
+Assume `book` contains its id, price, and all other values required if it must
+be inserted:
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+SimpleSaveResult<Book> result = sqlClient
+    .saveCommand(book)
+    .setMode(SaveMode.UPSERT)
+    .setUpdateWhere(
+        BookTable.class,
+        (table, values) -> values.newNumber(BookProps.PRICE).gt(table.price())
+    )
+    .execute();
+
+if (result.isAccepted()) {
+    Book modifiedBook = result.getModifiedEntity();
+}
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+val result = sqlClient.save(book) {
+    setMode(SaveMode.UPSERT)
+    setUpdateWhere(Book::class) {
+        newNonNull(Book::price) gt table.price
+    }
+}
+
+if (result.isAccepted) {
+    val modifiedBook = result.modifiedEntity
+}
+```
+
+</TabItem>
+</Tabs>
+
+The table represents the stored row; `newNumber`/`newNonNull` refers to a loaded
+value of the saved object. Nullable Kotlin input values use `newNullable`.
+Input values used by the condition need not be update targets, but must be loaded.
+The condition reads local physical properties and cannot create joins.
+
+| Situation | Result |
+| --- | --- |
+| No conflict in `UPSERT` | Insert, regardless of the update condition |
+| Existing row; predicate is true | Perform the update |
+| Existing row; predicate is false or SQL unknown | Reject the update, without an exception |
+
+The condition applies to `UPDATE_ONLY`, `UPSERT`, and the update branch of
+`NON_IDEMPOTENT_UPSERT`. A callback returning `null` adds no restriction for that
+entity type. Combine several requirements with the normal predicate DSL.
+Batch commands support the same configuration and expose acceptance per item.
+
+## Combine with Assignments and Optimistic Locking
+
+An [assignment expression](./assignment) defines the value written by an
+accepted update. `setUpdateWhere` decides whether that update is eligible.
+It remains effective even when an [upsert mask](./upsert-mask) selects no ordinary
+update assignments.
+
+`setOptimisticLock` has a different failure policy: its failed check throws the
+existing optimistic-lock error. If both conditions are configured, update
+eligibility is evaluated first; optimistic locking applies only to an accepted update.
+
+Java uses `UpdateCondition<E, T>` for both APIs. Existing callbacks continue to
+work; code that explicitly names the deprecated `UserOptimisticLock` interface
+should migrate to `UpdateCondition`. Kotlin uses the same receiver context with
+`table`, `newNonNull`, and `newNullable` for both methods.
+
+## Associations, Events, and Concurrency
+
+A rejected owner's post-associations are not mutated, and the rejected row emits
+no transaction event or cache invalidation. Owning-side references are processed
+before their owner in a graph save. Therefore a command with an effective update
+condition rejects mutable owning-side reference objects before SQL; use `null`
+or id-only references in that situation.
+
+Capable dialects put the predicate directly into the update branch. A native
+`UPDATE_ONLY` remains `UPDATE ... WHERE ...`; it is not rewritten into an upsert.
+When native conditional upsert is unavailable, the save pipeline can check the
+condition through a query before DML. The fallback does not provide an implicit
+concurrency guarantee across those statements. Use suitable transaction isolation
+or [pessimistic locking](./pessimistic-locking) when concurrent changes must be excluded.
+
+See [Save Result Fetching](./returning#acceptance) for the meaning of `isAccepted`.

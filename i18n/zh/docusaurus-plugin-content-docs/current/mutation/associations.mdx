@@ -462,7 +462,7 @@ public void setAuthors(long bookId, Collection<Long> authorIds) {
     AssociationTable<Book, BookTableEx, Author, AuthorTableEx> table =
                 AssociationTable.of(BookTableEx.class, BookTableEx::authors);    
     List<Long> oldAuthorIds = sqlClient
-            .createAssociationQuery(table)
+            .createQuery(table)
             .where(table.source().id().eq(1L))
             .select(table.target().id())
             .execute();
@@ -544,3 +544,11 @@ fun setAuthors(bookId: Long, authorIds: Collection<Long>) {
 
 </TabItem>
 </Tabs>
+
+## 从查询插入关联
+
+要插入由类型安全查询提供的大量中间表关联对，使用[从查询插入和合并数据](./insert-from-select)。
+关联插入支持忽略冲突，以及返回新插入的关联对。Java接受`AssociationTable`，Kotlin提供关联属性重载。
+
+同一个Java关联表也可以传入`createQuery`和`createBaseQuery`。
+`createAssociationQuery`作为已弃用的查询别名保留。

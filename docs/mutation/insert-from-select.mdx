@@ -1,0 +1,428 @@
+---
+sidebar_position: 0
+title: Insert and Upsert from Select
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+Use `createInsert` or `createUpsert` to write rows supplied by a typed
+[base query](../query/base-query). This is useful for importing query results,
+copying data, and applying computed updates to many rows without constructing
+an entity object for every row.
+
+The source determines which rows participate. The command explicitly maps
+source expressions to physical properties of one target table.
+
+## Prepare a Typed Source
+
+A source can come from an entity query, an association query, a derived table,
+a CTE, a recursive CTE, or a union. Joins, filters, and aggregations belong in
+that query. A [typed tuple](../query/typed-tuple) gives its columns meaningful names.
+
+For a small example, declare the input row and create a rootless query containing
+one new store. The examples below assume the `BookStore` model uses a `Long` id:
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+@TypedTuple
+@lombok.Data
+public class StoreInput {
+    private final Long id;
+    private final String name;
+    private final String website;
+}
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+@TypedTuple
+data class StoreInput(
+    val id: Long,
+    val name: String,
+    val website: String?
+)
+```
+
+</TabItem>
+</Tabs>
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+StoreInputTable source = sqlClient
+    .createBaseQuery()
+    .select(
+        StoreInputMapper
+            .id(Expression.value(100L))
+            .name(Expression.value("New Store"))
+            .website(Expression.value("https://example.com"))
+    )
+    .asBaseTable();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+val source = baseTableSymbol {
+    sqlClient.createBaseQuery {
+        select(
+            StoreInputMapper
+                .id(value(100L))
+                .name(value("New Store"))
+                .website(value("https://example.com"))
+        )
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+This source can be replaced by an ordinary multi-row base query without
+changing the mutation API. It can also be queried independently through
+`createQuery(source)`. Use `asCteBaseTable()` on the base query when a CTE is needed.
+
+## Insert
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+BookStoreTable store = BookStoreTable.$;
+
+int affectedRowCount = sqlClient
+    .createInsert(store, source)
+    .set(store.id(), source.getId())
+    .set(store.name(), source.getName())
+    .set(store.website(), source.getWebsite())
+    .execute();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+val affectedRowCount = sqlClient
+    .createInsert(BookStore::class, source) {
+        set(table.id, sourceTable.id)
+        set(table.name, sourceTable.name)
+        set(table.website, sourceTable.website)
+    }
+    .execute()
+```
+
+</TabItem>
+</Tabs>
+
+`set` defines an insert assignment. Its value may be a source expression or a
+constant; it cannot read the existing target row. The database receives an
+`INSERT ... SELECT` when the dialect supports the requested operation.
+
+Omitted target columns retain normal generated values, database defaults, and
+framework initialization. For example, an omitted `@Version` is initialized on
+insert. An omitted mandatory column without a default still causes an insert error.
+
+### Ignore Conflicts
+
+An insert is strict by default: a conflict is an error. To skip rows conflicting
+on a selected unique key, add one of these calls before `execute`:
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+.onConflictDoNothing(store.id())
+
+// Or infer the conflict key from metadata:
+.onConflictDoNothing()
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+onConflictDoNothing(table.id)
+
+// Or infer the conflict key from metadata:
+onConflictDoNothing()
+```
+
+</TabItem>
+</Tabs>
+
+The explicit form must cover one complete id or metadata-declared key group.
+Every conflict column needs an insert assignment. The no-argument form chooses
+the highest-priority eligible group: id first, then key groups in metadata order.
+It selects one key, not every unique constraint on the table. If no eligible
+group exists, the command fails before mutation.
+
+An explicitly empty property array is invalid; use the no-argument overload for
+inference. Skipped conflicts are excluded from returning.
+
+## Source Rows from an Entity Query
+
+The same `StoreInputMapper` can project an ordinary query. This source selects
+existing stores and supplies a replacement website. Use it with the upsert below
+to update the selected rows:
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+BookStoreTable existing = new BookStoreTable();
+
+StoreInputTable source = sqlClient
+    .createBaseQuery(existing)
+    .where(existing.name().eq("Old Store"))
+    .select(
+        StoreInputMapper
+            .id(existing.id())
+            .name(existing.name())
+            .website(Expression.value("https://new.example.com"))
+    )
+    .asBaseTable();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+val source = baseTableSymbol {
+    sqlClient.createBaseQuery(BookStore::class) {
+        where(table.name eq "Old Store")
+        select(
+            StoreInputMapper
+                .id(table.id)
+                .name(table.name)
+                .website(value("https://new.example.com"))
+        )
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+The query supplies all matching rows; the mutation does not first fetch them
+as entity objects in application code. Because these ids already exist, a strict
+insert using this source would report conflicts.
+
+## Upsert
+
+An upsert distinguishes the conflict key, insert-only values, update-only
+expressions, and values written in both branches:
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+int affectedRowCount = sqlClient
+    .createUpsert(store, source)
+    .key(store.id(), source.getId())
+    .insert(store.name(), source.getName())
+    .merge(store.website(), source.getWebsite())
+    .update(store.version(), store.version().plus(1))
+    .updateWhere(store.version().lt(10))
+    .execute();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+val affectedRowCount = sqlClient
+    .createUpsert(BookStore::class, source) {
+        key(table.id, sourceTable.id)
+        insert(table.name, sourceTable.name)
+        merge(table.website, sourceTable.website)
+        update(table.version, table.version + 1)
+        updateWhere(table.version lt 10)
+    }
+    .execute()
+```
+
+</TabItem>
+</Tabs>
+
+For a new id, this inserts the name and website and initializes version to zero.
+For an existing id with version below ten, it preserves the name, replaces the
+website, and increments the stored version. A conflicting row with version ten
+or greater is left unchanged.
+
+| Method | Insert branch | Accepted update branch |
+| --- | --- | --- |
+| `key(target, source)` | Insert source value and use it for conflict matching | Preserve key |
+| `insert(target, source)` | Insert source value | Preserve value |
+| `update(target, expression)` | Use default/framework initialization | Assign expression |
+| `merge(target, source)` | Insert source value | Assign source value |
+| `merge(target, insertSource, updateExpression)` | Assign insert expression | Assign update expression |
+
+Each physical target column can be assigned only once. Use three-argument
+`merge` when the same column needs different expressions for insertion and update.
+
+### Update Expressions
+
+Update expressions can read the existing target row and the source. For example,
+given a price source, `merge(book.price(), source.getPrice(),
+book.price().plus(source.getPrice()))` inserts the source price for a new row
+and adds it to the stored price for a conflicting row.
+
+`update` does not provide an insert value. This is useful for database defaults
+and for expressions that only make sense for an existing row. Its target must
+map to one physical column, including a scalar embedded member or an owning-side
+reference id. Id, discriminator, and logical-delete properties cannot be
+update-only targets.
+
+Versions follow assignment semantics: there is no implicit optimistic-lock
+predicate or automatic increment. An increment must be written explicitly, as
+in the example above. See [Version Mode](./save-command/version-mode) for the
+corresponding save-command configuration.
+
+### Keys and Update Conditions
+
+All `key` assignments together must identify one complete unique id/key group.
+Source rows must be unique by that key. The materialized plan checks duplicate
+source keys before writing; a native statement leaves a violation of this
+precondition to the database.
+
+`updateWhere` restricts only a conflicting row's update branch. A row without a
+conflict is still inserted. Non-null predicates from all calls are combined
+with `AND`; predicates can use both target and source values.
+
+:::note
+An upsert without `update` or `merge` assignments still has update semantics.
+Jimmer uses a safe self-assignment when needed. This can affect database triggers,
+locking, generated values, returning, and affected-row counts. It is different
+from `onConflictDoNothing()`, and `updateWhere` still applies.
+:::
+
+## Returning Rows
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+List<Tuple2<Long, Integer>> rows = sqlClient
+    .createUpsert(store, source)
+    .key(store.id(), source.getId())
+    .insert(store.name(), source.getName())
+    .merge(store.website(), source.getWebsite())
+    .update(store.version(), store.version().plus(1))
+    .returning(store.id(), store.version())
+    .execute();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+val rows = sqlClient
+    .createUpsertReturning(BookStore::class, source) {
+        key(table.id, sourceTable.id)
+        insert(table.name, sourceTable.name)
+        merge(table.website, sourceTable.website)
+        update(table.version, table.version + 1)
+        returning(table.id, table.version)
+    }
+    .execute()
+```
+
+</TabItem>
+</Tabs>
+
+Insert uses Java `createInsert(...).returning(...)` or Kotlin
+`createInsertReturning(...)`. Kotlin also provides reified factories and
+`executeInsert`, `executeUpsert`, `executeInsertReturning`, and
+`executeUpsertReturning` helpers that execute immediately.
+
+Returning supports a physical target property, a tuple of such properties, or
+a [typed-tuple mapper](../query/typed-tuple). It returns stored values after the
+mutation, including generated ids and defaults. It contains inserted rows and
+accepted updates, including accepted self-assignments. Skipped conflicts and
+updates rejected by `updateWhere` or a subtype discriminator are excluded.
+
+Fetcher graphs, joined/computed selections, and an inserted-versus-updated marker
+are not supported. Return order is not guaranteed. `execute()` without returning
+reports the database/JDBC affected-row count, which can differ between dialects;
+the returning list size counts rows that took an accepted mutation branch.
+
+## Association Tables
+
+Middle tables support insert and insert-if-absent, using the same typed source
+model. Given a `pairs` source exposing `bookId` and `authorId`:
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+AssociationTable<Book, BookTableEx, Author, AuthorTableEx> association =
+    AssociationTable.of(BookTableEx.class, BookTableEx::authors);
+
+sqlClient
+    .createInsert(association, pairs)
+    .set(association.<Long>sourceId(), pairs.getBookId())
+    .set(association.<Long>targetId(), pairs.getAuthorId())
+    .onConflictDoNothing()
+    .execute();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+sqlClient
+    .createInsert(Book::authors, pairs) {
+        set(table.sourceId, sourceTable.bookId)
+        set(table.targetId, sourceTable.authorId)
+        onConflictDoNothing()
+    }
+    .execute()
+```
+
+</TabItem>
+</Tabs>
+
+The inferred conflict key is the source-id/target-id pair. Returning can select
+these ids or a typed tuple and includes only newly inserted pairs. Association
+upsert is not provided. Kotlin association-property overloads require an
+association backed by a middle table.
+
+Java `createQuery(association)` and `createBaseQuery(association)` also accept
+the same association table. `createAssociationQuery` is a deprecated alias of
+the query factory.
+
+## Execution and Consistency
+
+Jimmer uses native `INSERT ... SELECT`, `ON CONFLICT`, `ON DUPLICATE KEY UPDATE`,
+or `MERGE` when the dialect can preserve the requested semantics. Otherwise it
+materializes the required source values and delegates to the normal save pipeline.
+For example, some conflict syntaxes cannot read a source value that has no insert
+assignment, and some dialects cannot return all accepted rows natively.
+
+Both paths preserve defaults, [transaction events](./trigger), and cache
+invalidation for accepted mutations. Transaction-trigger configurations can
+require the materialized path to obtain old and new rows. Rejected updates and
+skipped inserts emit no mutation event or cache invalidation for the rejected row.
+
+Entity targets must map to one physical table. Single-table-inheritance subtypes
+are supported; joined-inheritance targets are not. On a conflict with another
+subtype, the update is rejected rather than changing its discriminator. Logical-delete
+metadata participates in natural-key conflict matching, as it does for save commands.
+
+:::caution
+The materialized path can perform reads followed by DML. It does not add hidden
+pessimistic locks. If rows can change concurrently between those steps, use an
+appropriate transaction isolation level or explicitly lock the required scope.
+Do not assume every supported command executes as one atomic SQL statement.
+:::
+
+For object or graph input, use a [save command](./save-command) instead. Its
+[assignment expressions](./save-command/assignment), [update conditions](./save-command/update-where),
+and [upsert mask](./save-command/upsert-mask) provide the corresponding controls.

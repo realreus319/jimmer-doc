@@ -1,0 +1,126 @@
+---
+sidebar_position: 6.5
+title: Upsert Mask
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+A saved object's loaded shape determines which values are available. An
+`UpsertMask` further limits which of those properties may be inserted or updated
+during an upsert. For example, a complete incoming book can provide all insert
+values while allowing only its price to change on a conflict.
+
+## Select Updatable Properties
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+sqlClient
+    .saveCommand(book)
+    .setUpsertMask(BookProps.PRICE)
+    .execute();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+sqlClient.save(book) {
+    setUpsertMask(Book::price)
+}
+```
+
+</TabItem>
+</Tabs>
+
+On insertion, normal loaded values are still available. On a conflict, the
+ordinary update set is the intersection of the loaded shape and the mask,
+excluding the conflict id/key. A mask does not load a missing value.
+
+The mask also constrains targets of public [save assignment expressions](./assignment).
+Configuring a custom expression for a target excluded by the shape or mask is an error.
+
+## No Property Updates
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+sqlClient
+    .saveCommand(book)
+    .forbidUpdate()
+    .execute();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+sqlClient.save(book) {
+    forbidUpdate()
+}
+```
+
+</TabItem>
+</Tabs>
+
+`forbidUpdate()` selects no entity-property assignments for the upsert update
+branch. An explicitly empty array passed to the convenience `setUpsertMask(...)`
+overloads has the same meaning.
+
+This does not turn the operation into `INSERT_IF_ABSENT`. The dialect may still
+emit a self-assignment to fetch an id, return a row, or preserve other save
+semantics. Such SQL can fire database triggers. An effective `setUpdateWhere`
+still decides whether the matched branch is accepted. Use
+[save mode `INSERT_IF_ABSENT`](./save-mode) when the intended operation is to skip
+an existing row.
+
+## Configure Both Branches
+
+Use an `UpsertMask` object when insert and update need different property sets:
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+UpsertMask<Book> mask = UpsertMask.of(Book.class)
+    .addInsertableProp(BookProps.NAME)
+    .addInsertableProp(BookProps.EDITION)
+    .addInsertableProp(BookProps.PRICE)
+    .addUpdatableProp(BookProps.PRICE);
+
+sqlClient.saveCommand(book).setUpsertMask(mask).execute();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+val mask = UpsertMask.of(Book::class.java)
+    .addInsertableProp(Book::name)
+    .addInsertableProp(Book::edition)
+    .addInsertableProp(Book::price)
+    .addUpdatableProp(Book::price)
+
+sqlClient.save(book) {
+    setUpsertMask(mask)
+}
+```
+
+</TabItem>
+</Tabs>
+
+Each branch is unrestricted until a property list is specified for that branch.
+`addInsertablePath` and `addUpdatablePath` can select individual embedded members.
+Mask builder methods return a new mask, so keep their return value or chain them.
+
+`forbidInsert()` starts an empty insert-property list; it does not disable the
+insert branch. Add the desired insertable properties after it. Conflict columns
+and framework-required columns are still supplied, and omitted columns use
+database defaults where available. A missing mandatory value without a default
+causes the normal database error.
+
+Masks select assignments; they do not replace [save modes](./save-mode),
+[update conditions](./update-where), or [version mode](./version-mode).

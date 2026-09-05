@@ -85,7 +85,7 @@ returned expression has the most useful static type for the SQL DSL.
 Assignment expressions are supported by:
 
 -   `UPDATE_ONLY`
--   The update branch of `UPSERT` when the row already exists
+-   The update branches of `UPSERT` and `NON_IDEMPOTENT_UPSERT` when the row already exists
 
 They are not supported by `INSERT_ONLY`. An insert still takes its values from
 the saved object; `set` only customizes an update assignment.
@@ -94,7 +94,7 @@ the saved object; `set` only customizes an update assignment.
 
 `set` does not add a property to the save operation. It replaces the assignment
 for a property that has already been selected by the loaded object shape and,
-for an upsert, by its `UpsertMask`.
+for an upsert, by its [upsert mask](./upsert-mask).
 
 Consequently:
 
@@ -115,9 +115,11 @@ whenever its entity type is reached during the save.
 
 ## Restrictions
 
-An assignment target must be a local physical scalar column. IDs, versions,
+An assignment target must be a local physical scalar column. IDs,
 discriminators, logical-deletion properties, associations, calculated
-properties, and remote properties cannot be targets.
+properties, and remote properties cannot be targets. A version property is
+allowed when the root command uses [VersionMode.ASSIGNMENT](./version-mode).
+The target must still be loaded and selected for update.
 
 The expression can read local physical scalar properties from `target`, but it
 cannot create joins. Configure each target at most once on a command.
@@ -137,3 +139,15 @@ use the same saved-value expression API. In both APIs, the table expression is
 the current database row and the `new*` functions refer to the saved object.
 They can be used together in one command: the lock predicate decides whether
 the update is accepted, while `set` decides how an accepted row is updated.
+
+## Conditional Updates
+
+Use [setUpdateWhere](./update-where) to skip an ineligible update without an
+optimistic-lock exception. It controls whether the update happens; `set`
+controls the assigned value. [Result acceptance](./returning#acceptance) distinguishes
+an accepted update from a rejected one.
+
+For a query source, [upsert from select](../insert-from-select) provides
+`update(target, expression)` without an insert value, or three-argument `merge`
+with separate insert and update expressions. These query-based assignments do
+not require a loaded input entity property.

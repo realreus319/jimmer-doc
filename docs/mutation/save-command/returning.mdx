@@ -49,6 +49,52 @@ The same overloads are available for batch save commands. A generated output
 DTO type can also be passed instead of a fetcher; in that case the result
 exposes `modifiedView`.
 
+## Acceptance {#acceptance}
+
+A result item's `isAccepted` reports whether its own insert or update branch
+was accepted. Check it before treating the returned entity as a successful write:
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+SimpleSaveResult<Book> result = sqlClient.saveCommand(book).execute();
+boolean accepted = result.isAccepted();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+val result = sqlClient.save(book)
+val accepted = result.isAccepted
+```
+
+</TabItem>
+</Tabs>
+
+| Outcome | `isAccepted` |
+| --- | --- |
+| Inserted row | `true` |
+| Accepted update, including a self-assignment | `true` |
+| Existing row skipped by `INSERT_IF_ABSENT` | `false` |
+| Update rejected by `setUpdateWhere` | `false` |
+| Update rejected by an incompatible single-table subtype discriminator | `false` |
+
+This is distinct from object modification and affected-row count. A driver may
+report zero affected rows for an accepted operation; use the acceptance flag
+instead of inferring a business decision from that number.
+
+Batch result items and Java/Kotlin view results preserve the same flag.
+Acceptance is local to the saved object, not a summary of every association in
+the graph. For example, an existing target found by `APPEND_IF_ABSENT` is not
+inserted again, but its resolved id can still be used to create the parent's
+association. An owner rejected by an update condition does not proceed with its
+post-associations.
+
+For a query-based mutation, [insert/upsert returning](../insert-from-select)
+contains only rows that took an accepted mutation branch.
+
 ## How the Result Is Materialized
 
 Jimmer builds the result in three steps:
