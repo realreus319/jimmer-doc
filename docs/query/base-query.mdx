@@ -187,6 +187,78 @@ The result is:
 ]
 ```
 
+## Select an Entity Table Directly
+
+When a source only needs an entity table and filters, use `select(table)`.
+The source preserves the selected table's type, so its properties are available
+directly without a one-element tuple or a projection mapper:
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+BookStoreTable store = BookStoreTable.$;
+
+ConfigurableBaseQuery<BookStoreTable> query = sqlClient
+    .createBaseQuery(store)
+    .where(store.name().eq("MANNING"))
+    .select(store);
+
+BookStoreTable source = query.asBaseTable();
+
+List<String> names = sqlClient
+    .createQuery(source)
+    .select(source.name())
+    .execute();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+val source = sqlClient.createBaseQuery(BookStore::class) {
+    where(table.name eq "MANNING")
+    select(table)
+}.asBaseTable()
+
+val names = sqlClient.createQuery(source) {
+    select(table.name)
+}.execute()
+```
+
+</TabItem>
+</Tabs>
+
+In Java, `asBaseTable()` returns `BookStoreTable`. In Kotlin, it returns a
+`KBaseTableSymbol<KNonNullTable<BookStore>>`; the receiving query exposes that
+table through its `table` receiver. Selecting a nullable joined table preserves
+`KNullableTable<BookStore>` instead.
+
+This base-query `select(table)` describes the available properties. It does not
+load an entity or require all its columns in SQL. In this example, reverse
+projection propagation exports only `NAME`, while the source filter remains in
+the inner query:
+
+```sql
+select tb_1_.c1
+from (
+    select tb_2_.NAME c1
+    from BOOK_STORE tb_2_
+    where tb_2_.NAME = ? /* MANNING */
+) tb_1_
+```
+
+The source also works with `createBaseQuery(source)`, `asCteBaseTable()`,
+compatible unions and recursive CTEs, and
+[insert/upsert commands](../mutation/insert-from-select#select-an-entity-table).
+Required columns propagate through nested sources. With `distinct`, `union`,
+`intersect`, or `minus`, the entity selection retains the fields needed to
+preserve row identity and multiplicity.
+
+Use `addSelect(table)` in Java or `selections.add(table)` in Kotlin when building
+a positional tuple. Those methods retain their existing `get_1()`/`_1` access.
+Use `select(mapper)` for a named custom projection.
+
 ## Named Base Tables
 
 For report queries, positional properties such as `_1` and `_2` quickly become
@@ -230,7 +302,8 @@ The positional API shown above uses the following projection methods:
 Chain programming style must be adopted, and syntax cannot be interrupted at the language level to ensure successful compilation.
 :::
 
-`createBaseQuery` is designed this way to allow only the following two operations:
+Individual positional selections support the following two operations. The direct
+`select(table)` form follows the same table-projection rules:
 
 1.  Query simple expressions
 

@@ -14,6 +14,64 @@ an entity object for every row.
 The source determines which rows participate. The command explicitly maps
 source expressions to physical properties of one target table.
 
+## Select an Entity Table
+
+For an entity source, select the table and define filters without listing its
+properties twice. This example assumes a separate `BookStoreArchive` entity
+with physical `id` and `name` properties compatible with `BookStore`:
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+BookStoreTable store = BookStoreTable.$;
+BookStoreArchiveTable archive = BookStoreArchiveTable.$;
+
+BookStoreTable selectedStores = sqlClient
+    .createBaseQuery(store)
+    .where(store.name().eq("MANNING"))
+    .select(store)
+    .asBaseTable();
+
+int affectedRowCount = sqlClient
+    .createInsert(archive, selectedStores)
+    .set(archive.id(), selectedStores.id())
+    .set(archive.name(), selectedStores.name())
+    .execute();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+val selectedStores = sqlClient.createBaseQuery(BookStore::class) {
+    where(table.name eq "MANNING")
+    select(table)
+}.asBaseTable()
+
+val affectedRowCount = sqlClient
+    .createInsert(BookStoreArchive::class, selectedStores) {
+        set(table.id, sourceTable.id)
+        set(table.name, sourceTable.name)
+    }
+    .execute()
+```
+
+</TabItem>
+</Tabs>
+
+The mapping uses `selectedStores.id()` in Java and `sourceTable.id` in Kotlin.
+There is no `get_1()`/`_1` wrapper. Reverse projection propagation exports the
+columns required by the mutation, so unused properties such as `website` are
+not selected. The filter still determines which rows participate.
+
+The same source can be passed to `createUpsert` or to returning commands, and
+can be queried independently. See [Select an Entity Table Directly](../query/base-query#select-an-entity-table-directly)
+for query examples and the behavior of nested sources and set operations.
+An exported table remains bound to its source query and cannot be a mutation
+target. Use a separate target table object, as above. A plain table singleton
+must first be exported by a base query before it can serve as a mutation source.
+
 ## Prepare a Typed Source
 
 A source can come from an entity query, an association query, a derived table,

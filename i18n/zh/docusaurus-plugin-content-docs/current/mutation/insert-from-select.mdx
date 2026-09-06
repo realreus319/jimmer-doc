@@ -11,6 +11,60 @@ import TabItem from '@theme/TabItem';
 
 source决定参与操作的数据行，指令则显式地把source表达式映射到一个目标表的物理属性。
 
+## 直接选择实体表
+
+对于实体source，可以选择table并定义过滤条件，无需在source和mutation中重复列出属性。
+下面假定存在单独的`BookStoreArchive`实体，其物理属性`id`和`name`与`BookStore`兼容：
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+BookStoreTable store = BookStoreTable.$;
+BookStoreArchiveTable archive = BookStoreArchiveTable.$;
+
+BookStoreTable selectedStores = sqlClient
+    .createBaseQuery(store)
+    .where(store.name().eq("MANNING"))
+    .select(store)
+    .asBaseTable();
+
+int affectedRowCount = sqlClient
+    .createInsert(archive, selectedStores)
+    .set(archive.id(), selectedStores.id())
+    .set(archive.name(), selectedStores.name())
+    .execute();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+val selectedStores = sqlClient.createBaseQuery(BookStore::class) {
+    where(table.name eq "MANNING")
+    select(table)
+}.asBaseTable()
+
+val affectedRowCount = sqlClient
+    .createInsert(BookStoreArchive::class, selectedStores) {
+        set(table.id, sourceTable.id)
+        set(table.name, sourceTable.name)
+    }
+    .execute()
+```
+
+</TabItem>
+</Tabs>
+
+Java直接使用`selectedStores.id()`，Kotlin直接使用`sourceTable.id`，无需`get_1()`/`_1`
+包装。投影反向传播只导出mutation需要的列，因此未使用的`website`等属性不会被选择。
+过滤条件仍决定哪些行参与操作。
+
+同一个source也适用于`createUpsert`、returning指令和普通查询。查询示例、嵌套source和
+集合操作的行为请参阅[直接选择实体表](../query/base-query#直接选择实体表)。
+导出的table始终绑定到source查询，不能用作mutation目标；应像上例一样单独指定目标表。
+普通table单例需要先通过base-query导出，才能作为mutation的source。
+
 ## 准备类型安全的source
 
 source可以来自实体查询、关联表查询、派生表、CTE、递归CTE或联合查询。连接、过滤和聚合都在

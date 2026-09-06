@@ -187,6 +187,71 @@ where
 ]
 ```
 
+## 直接选择实体表
+
+如果source只需要实体表和过滤条件，可以使用`select(table)`。source保留所选table的类型，
+因此可以直接访问属性，无需单元素元组或投影mapper：
+
+<Tabs groupId="language">
+<TabItem value="java" label="Java">
+
+```java
+BookStoreTable store = BookStoreTable.$;
+
+ConfigurableBaseQuery<BookStoreTable> query = sqlClient
+    .createBaseQuery(store)
+    .where(store.name().eq("MANNING"))
+    .select(store);
+
+BookStoreTable source = query.asBaseTable();
+
+List<String> names = sqlClient
+    .createQuery(source)
+    .select(source.name())
+    .execute();
+```
+
+</TabItem>
+<TabItem value="kotlin" label="Kotlin">
+
+```kotlin
+val source = sqlClient.createBaseQuery(BookStore::class) {
+    where(table.name eq "MANNING")
+    select(table)
+}.asBaseTable()
+
+val names = sqlClient.createQuery(source) {
+    select(table.name)
+}.execute()
+```
+
+</TabItem>
+</Tabs>
+
+在Java中，`asBaseTable()`返回`BookStoreTable`。在Kotlin中，它返回
+`KBaseTableSymbol<KNonNullTable<BookStore>>`，外层查询通过接收者的`table`访问所选实体表。
+如果选择的是可空的连接表，Kotlin会保留`KNullableTable<BookStore>`类型。
+
+base-query中的`select(table)`描述可用的属性，不会加载实体，也不要求SQL选择所有列。
+本例中，投影反向传播只导出`NAME`，source的过滤条件仍保留在内层查询中：
+
+```sql
+select tb_1_.c1
+from (
+    select tb_2_.NAME c1
+    from BOOK_STORE tb_2_
+    where tb_2_.NAME = ? /* MANNING */
+) tb_1_
+```
+
+这个source也可以用于`createBaseQuery(source)`、`asCteBaseTable()`、类型兼容的union、
+recursive CTE，以及[insert/upsert指令](../mutation/insert-from-select#直接选择实体表)。
+所需的列会穿过嵌套source逐层传播。对于`distinct`、`union`、`intersect`或`minus`，
+实体投影会保留维持行身份和结果行数所需的字段。
+
+构建位置化元组时，仍使用Java的`addSelect(table)`或Kotlin的`selections.add(table)`，
+通过`get_1()`/`_1`访问其元素。命名的自定义投影则使用`select(mapper)`。
+
 ## 命名Base Table
 
 对于报表查询，`_1`、`_2`这样的位置化属性很快就会变得难以阅读。
@@ -227,7 +292,7 @@ Java和Kotlin的声明方式及完整示例请参阅[Typed Tuple](./typed-tuple)
 须采用链式编程风格，语法层面不可中断，才能保证成功的编译
 :::
 
-`createBaseQuery`如此设计的，是为了只允许如下两种操作
+位置化投影的每个元素支持以下两种操作。直接使用`select(table)`时，也遵循相同的table投影规则：
 
 1.  查询简表达式
 
